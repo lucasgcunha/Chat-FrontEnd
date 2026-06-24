@@ -95,7 +95,9 @@
   flex-wrap: wrap;
   gap: 16px;
 }
-.lobby-header h1 { margin: 0 0 4px; font-size: 32px; }
+.lobby-header-text { display: flex; align-items: baseline; gap: 12px; }
+.lobby-header h1 { margin: 0; font-size: 32px; }
+.lobby-header .subtitle { margin: 0; }
 
 .lobby-actions { display: flex; gap: 10px; align-items: center; padding-top: 8px; }
 

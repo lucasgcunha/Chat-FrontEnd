@@ -195,7 +195,7 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate 
   return (
     <div className="screen lobby-screen">
       <header className="lobby-header">
-        <div>
+        <div className="lobby-header-text">
           <h1>Lobby</h1>
           <p className="subtitle">
             Bem-vindo, <strong>{user.nickname}</strong>{' '}
