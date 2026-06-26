@@ -63,33 +63,43 @@ export default function App() {
     }
   }
 
-  function handleJoinRoom(room) {
+  async function handleJoinRoom(room) {
     if (room.isPrivate) {
       const pwd = prompt('Esta sala é privada. Digite a senha:');
       if (!pwd) return;
     }
-    setCurrentRoom(room);
-    setMessages(room.historico?.map((text) => ({ text, sender: 'Sistema', system: true })) ?? []);
-    setScreen(SCREEN.CHAT);
+    try {
+      await api.adicionarUsuarioNaSala(room.id, user.id);
+      setCurrentRoom(room);
+      setMessages(room.historico?.map((text) => ({ text, sender: 'Sistema', system: true })) ?? []);
+      setScreen(SCREEN.CHAT);
 
-    connect(
-      () => {
-        setConnected(true);
-        subscriptionRef.current = subscribeToRoom(room.id, (msg) => {
-          setMessages((prev) => [...prev, msg]);
-        });
-      },
-      () => setConnected(false)
-    );
+      connect(
+        () => {
+          setConnected(true);
+          subscriptionRef.current = subscribeToRoom(room.id, (msg) => {
+            setMessages((prev) => [...prev, msg]);
+          });
+        },
+        () => setConnected(false)
+      );
+    } catch (err) {
+      alert(`Erro ao entrar na sala: ${err.message}`);
+    }
   }
 
-  function handleLeaveRoom() {
+  async function handleLeaveRoom() {
     if (subscriptionRef.current) {
       subscriptionRef.current.unsubscribe();
       subscriptionRef.current = null;
     }
     disconnect();
     setConnected(false);
+    try {
+      await api.removerUsuarioDaSala(currentRoom.id, user.id);
+    } catch (err) {
+      console.error('Erro ao sair da sala:', err);
+    }
     setCurrentRoom(null);
     setMessages([]);
     setScreen(SCREEN.LOBBY);
