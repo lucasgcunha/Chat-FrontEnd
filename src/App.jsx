@@ -5,51 +5,16 @@ import './App.css';
 
 const Role = { ADMIN: 'ADMIN', USER: 'USER', GUEST: 'GUEST' };
 
-function createPublicPolicy() {
-  return { type: 'PUBLIC', validate: () => true };
-}
-
-function createPrivatePolicy(password) {
-  return { type: 'PRIVATE', validate: (pwd) => pwd === password };
-}
-
-const RoomFactory = {
-  createPublicRoom(ownerId) {
-    return {
-      id: crypto.randomUUID(),
-      historico: [],
-      ownerId,
-      password: null,
-      politica: createPublicPolicy(),
-    };
-  },
-  createPrivateRoom(ownerId, password) {
-    return {
-      id: crypto.randomUUID(),
-      historico: [],
-      ownerId,
-      password,
-      politica: createPrivatePolicy(password),
-    };
-  },
-};
-
-function makeInitialRooms() {
-  const geral = RoomFactory.createPublicRoom(0);
-  geral.name = 'Geral';
-  const tech = RoomFactory.createPublicRoom(0);
-  tech.name = 'Tecnologia';
-  const vip = RoomFactory.createPrivateRoom(0, 'secret123');
-  vip.name = 'VIP';
-  return [geral, tech, vip];
-}
-
 const SCREEN = { LOGIN: 'LOGIN', LOBBY: 'LOBBY', CHAT: 'CHAT' };
+
+function roomLabel(room) {
+  return `Sala ${room.id.toString().slice(0, 8).toUpperCase()}`;
+}
 
 export default function App() {
   const [screen, setScreen] = useState(SCREEN.LOGIN);
   const [user, setUser] = useState(null);
-  const [rooms, setRooms] = useState(makeInitialRooms);
+  const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [connected, setConnected] = useState(false);
@@ -73,29 +38,20 @@ export default function App() {
   }
 
   function handleCreatePublicRoom() {
-    const room = RoomFactory.createPublicRoom(user.id);
-    room.name = `Sala Pública #${rooms.length + 1}`;
-    setRooms((prev) => [...prev, room]);
+    setRooms((prev) => prev);
   }
 
   function handleCreatePrivateRoom() {
-    const password = prompt('Digite a senha para a sala privada:');
-    if (!password) return;
-    const room = RoomFactory.createPrivateRoom(user.id, password);
-    room.name = `Sala Privada #${rooms.length + 1}`;
-    setRooms((prev) => [...prev, room]);
+    setRooms((prev) => prev);
   }
 
   function handleJoinRoom(room) {
-    if (room.politica.type === 'PRIVATE') {
+    if (room.isPrivate) {
       const pwd = prompt('Esta sala é privada. Digite a senha:');
-      if (!room.politica.validate(pwd)) {
-        alert('Senha incorreta!');
-        return;
-      }
+      if (!pwd) return;
     }
     setCurrentRoom(room);
-    setMessages(room.historico.map((text) => ({ text, sender: 'Sistema', system: true })));
+    setMessages(room.historico?.map((text) => ({ text, sender: 'Sistema', system: true })) ?? []);
     setScreen(SCREEN.CHAT);
 
     connect(
@@ -217,9 +173,9 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate 
         {rooms.map((room) => (
           <div key={room.id} className="room-card">
             <div className="room-info">
-              <span className="room-name">{room.name}</span>
-              <span className={`room-type ${room.politica.type === 'PRIVATE' ? 'private' : 'public'}`}>
-                {room.politica.type === 'PRIVATE' ? 'Privada' : 'Pública'}
+              <span className="room-name">{roomLabel(room)}</span>
+              <span className={`room-type ${room.isPrivate ? 'private' : 'public'}`}>
+                {room.isPrivate ? 'Privada' : 'Pública'}
               </span>
             </div>
             <button className="btn btn-sm" onClick={() => onJoinRoom(room)}>Entrar</button>
@@ -244,7 +200,7 @@ function ChatScreen({ user, room, messages, connected, onSend, onLeave, messages
       <header className="chat-header">
         <button className="btn btn-sm" onClick={onLeave}>← Voltar</button>
         <div className="chat-header-info">
-          <h2>{room.name}</h2>
+          <h2>{roomLabel(room)}</h2>
           <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`}>
             {connected ? 'Conectado' : 'Conectando...'}
           </span>
