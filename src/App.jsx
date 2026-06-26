@@ -207,6 +207,9 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate 
               <span className={`room-type ${room.isPrivate ? 'private' : 'public'}`}>
                 {room.isPrivate ? 'Privada' : 'Pública'}
               </span>
+              <span className="room-members">
+                {room.users?.length ?? 0} {room.users?.length === 1 ? 'membro' : 'membros'}
+              </span>
             </div>
             <button className="btn btn-sm" onClick={() => onJoinRoom(room)}>Entrar</button>
           </div>
