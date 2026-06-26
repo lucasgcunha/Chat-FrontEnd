@@ -43,12 +43,24 @@ export default function App() {
     }
   }
 
-  function handleCreatePublicRoom() {
-    setRooms((prev) => prev);
+  async function handleCreatePublicRoom() {
+    try {
+      const room = await api.criarSalaPublica(user.id);
+      setRooms((prev) => [...prev, room]);
+    } catch (err) {
+      alert(`Erro ao criar sala: ${err.message}`);
+    }
   }
 
-  function handleCreatePrivateRoom() {
-    setRooms((prev) => prev);
+  async function handleCreatePrivateRoom() {
+    const password = prompt('Digite a senha para a sala privada:');
+    if (!password) return;
+    try {
+      const room = await api.criarSalaPrivada(user.id, password);
+      setRooms((prev) => [...prev, { ...room, isPrivate: true }]);
+    } catch (err) {
+      alert(`Erro ao criar sala: ${err.message}`);
+    }
   }
 
   function handleJoinRoom(room) {
