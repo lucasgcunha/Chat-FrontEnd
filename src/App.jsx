@@ -70,8 +70,10 @@ export default function App() {
     }
     try {
       await api.adicionarUsuarioNaSala(room.id, user.id);
-      setCurrentRoom(room);
-      setMessages(room.historico?.map((text) => ({ text, sender: 'Sistema', system: true })) ?? []);
+      const updatedRoom = await api.buscarSala(room.id);
+      const historico = updatedRoom?.historico ?? [];
+      setCurrentRoom(updatedRoom ?? room);
+      setMessages(historico.map((text) => ({ text, sender: 'Sistema', system: true })));
       setScreen(SCREEN.CHAT);
 
       connect(
