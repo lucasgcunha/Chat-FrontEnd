@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { connect, subscribeToRoom, sendMessage, disconnect } from './services/websocket';
+import { api } from './services/api';
 import './App.css';
 
 const Role = { ADMIN: 'ADMIN', USER: 'USER', GUEST: 'GUEST' };
@@ -61,9 +62,14 @@ export default function App() {
 
   useEffect(() => () => disconnect(), []);
 
-  function handleLogin(nickname, role) {
-    setUser({ id: Date.now(), nickname, role });
-    setScreen(SCREEN.LOBBY);
+  async function handleLogin(nickname, role) {
+    try {
+      const savedUser = await api.cadastrarUsuario({ nickname, role });
+      setUser(savedUser);
+      setScreen(SCREEN.LOBBY);
+    } catch (err) {
+      alert(`Erro ao entrar: ${err.message}`);
+    }
   }
 
   function handleCreatePublicRoom() {
