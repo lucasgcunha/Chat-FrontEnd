@@ -27,6 +27,12 @@ export default function App() {
 
   useEffect(() => () => disconnect(), []);
 
+  useEffect(() => {
+    if (screen === SCREEN.LOBBY) {
+      api.listarSalas().then(setRooms).catch(console.error);
+    }
+  }, [screen]);
+
   async function handleLogin(nickname, role) {
     try {
       const savedUser = await api.cadastrarUsuario({ nickname, role });
