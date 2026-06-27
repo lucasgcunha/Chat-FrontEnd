@@ -1,18 +1,28 @@
 const BASE_URL = 'http://localhost:8080';
 
+let authToken = null;
+
+export function setToken(token) {
+  authToken = token;
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE_URL}${path}`, { headers, ...options });
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
   if (res.status === 204) return null;
   return res.json();
 }
 
 export const api = {
-  cadastrarUsuario: (user) =>
-    request('/usuarios', { method: 'POST', body: JSON.stringify(user) }),
+  // Retorna { valido, duplicado, mensagem }
+  cadastrarUsuario: (nickname, senha) =>
+    request('/usuarios', { method: 'POST', body: JSON.stringify({ nickname, senha }) }),
+
+  // Retorna { token, idUsuario, nickname, role }
+  loginUsuario: (nickname, senha) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ nickname, senha }) }),
 
   listarUsuarios: () => request('/usuarios'),
 
@@ -23,6 +33,7 @@ export const api = {
 
   deletarUsuario: (id) => request(`/usuarios/${id}`, { method: 'DELETE' }),
 
+  // Retorna List<RoomDto> onde cada item é { id, ownerId, historico, room_users }
   listarSalas: () => request('/salas'),
 
   buscarSala: (id) => request(`/salas/${id}`),
@@ -33,12 +44,10 @@ export const api = {
     request(`/salas/publica/${ownerId}`, { method: 'POST' }),
 
   criarSalaPrivada: (ownerId, password) =>
-    request(`/salas/privada/${ownerId}?password=${encodeURIComponent(password)}`, {
-      method: 'POST',
-    }),
+    request(`/salas/privada/${ownerId}?password=${encodeURIComponent(password)}`, { method: 'POST' }),
 
-  adicionarUsuarioNaSala: (roomId, userId) =>
-    request(`/salas/${roomId}/usuario/${userId}`, { method: 'PUT' }),
+  adicionarUsuarioNaSala: (roomId, userId, password = '') =>
+    request(`/salas/${roomId}/usuario/${userId}?password=${encodeURIComponent(password)}`, { method: 'PUT' }),
 
   removerUsuarioDaSala: (roomId, userId) =>
     request(`/salas/${roomId}/usuario/${userId}`, { method: 'DELETE' }),

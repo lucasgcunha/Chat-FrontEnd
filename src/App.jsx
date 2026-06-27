@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { connect, subscribeToRoom, sendMessage, disconnect } from './services/websocket';
-import { api } from './services/api';
+import { api, setToken } from './services/api';
 import './App.css';
-
-const Role = { ADMIN: 'ADMIN', USER: 'USER', GUEST: 'GUEST' };
 
 const SCREEN = { LOGIN: 'LOGIN', LOBBY: 'LOBBY', CHAT: 'CHAT' };
 
@@ -33,10 +31,17 @@ export default function App() {
     }
   }, [screen]);
 
-  async function handleLogin(nickname, role) {
+  async function handleLogin(nickname, senha) {
     try {
-      const savedUser = await api.cadastrarUsuario({ nickname, role });
-      setUser(savedUser);
+      const registro = await api.cadastrarUsuario(nickname, senha);
+      // Se nickname já existe (duplicado), tenta fazer login direto
+      if (!registro.valido && !registro.duplicado) {
+        alert(`Erro ao cadastrar: ${registro.mensagem}`);
+        return;
+      }
+      const loginData = await api.loginUsuario(nickname, senha);
+      setToken(loginData.token);
+      setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
       setScreen(SCREEN.LOBBY);
     } catch (err) {
       alert(`Erro ao entrar: ${err.message}`);
@@ -64,16 +69,14 @@ export default function App() {
   }
 
   async function handleJoinRoom(room) {
-    if (room.isPrivate) {
-      const pwd = prompt('Esta sala é privada. Digite a senha:');
-      if (!pwd) return;
-    }
+    const pwd = prompt('Senha da sala (deixe vazio para salas públicas):');
+    if (pwd === null) return; // usuário cancelou
     try {
-      await api.adicionarUsuarioNaSala(room.id, user.id);
+      await api.adicionarUsuarioNaSala(room.id, user.id, pwd);
       const updatedRoom = await api.buscarSala(room.id);
       const historico = updatedRoom?.historico ?? [];
       setCurrentRoom(updatedRoom ?? room);
-      setMessages(historico.map((text) => ({ text, sender: 'Sistema', system: true })));
+      setMessages(historico.map((item) => JSON.parse(item)));
       setScreen(SCREEN.CHAT);
 
       connect(
@@ -143,12 +146,12 @@ export default function App() {
 
 function LoginScreen({ onLogin }) {
   const [nickname, setNickname] = useState('');
-  const [role, setRole] = useState(Role.USER);
+  const [senha, setSenha] = useState('');
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (!nickname.trim()) return;
-    onLogin(nickname.trim(), role);
+    if (!nickname.trim() || !senha.trim()) return;
+    onLogin(nickname.trim(), senha.trim());
   }
 
   return (
@@ -169,12 +172,14 @@ function LoginScreen({ onLogin }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="role">Perfil</label>
-            <select id="role" value={role} onChange={(e) => setRole(e.target.value)}>
-              {Object.values(Role).map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <label htmlFor="senha">Senha</label>
+            <input
+              id="senha"
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              placeholder="Sua senha..."
+            />
           </div>
           <button type="submit" className="btn btn-primary">Entrar</button>
         </form>
@@ -208,7 +213,8 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate 
                 {room.isPrivate ? 'Privada' : 'Pública'}
               </span>
               <span className="room-members">
-                {room.users?.length ?? 0} {room.users?.length === 1 ? 'membro' : 'membros'}
+                {room.room_users?.length ?? 0}{' '}
+                {room.room_users?.length === 1 ? 'membro' : 'membros'}
               </span>
             </div>
             <button className="btn btn-sm" onClick={() => onJoinRoom(room)}>Entrar</button>
