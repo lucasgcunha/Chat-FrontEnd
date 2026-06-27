@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { connect, subscribeToRoom, sendMessage, disconnect } from './services/websocket';
 import { api, setToken } from './services/api';
 import './App.css';
 
@@ -9,6 +8,14 @@ function roomLabel(room) {
   return `Sala ${room.id.toString().slice(0, 8).toUpperCase()}`;
 }
 
+function parseMessage(item) {
+  try {
+    return JSON.parse(item);
+  } catch {
+    return { sender: 'Sistema', text: item, system: true, timestamp: new Date().toISOString() };
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState(SCREEN.LOGIN);
   const [user, setUser] = useState(null);
@@ -16,14 +23,11 @@ export default function App() {
   const [currentRoom, setCurrentRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [connected, setConnected] = useState(false);
-  const subscriptionRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => () => disconnect(), []);
 
   useEffect(() => {
     if (screen === SCREEN.LOBBY) {
@@ -31,20 +35,39 @@ export default function App() {
     }
   }, [screen]);
 
+  useEffect(() => {
+    if (screen !== SCREEN.CHAT || !currentRoom) return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.buscarSala(currentRoom.id);
+        setMessages((updated?.historico ?? []).map(parseMessage));
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [screen, currentRoom?.id]);
+
   async function handleLogin(nickname, senha) {
     try {
-      const registro = await api.cadastrarUsuario(nickname, senha);
-      // Se nickname já existe (duplicado), tenta fazer login direto
-      if (!registro.valido && !registro.duplicado) {
-        alert(`Erro ao cadastrar: ${registro.mensagem}`);
-        return;
-      }
       const loginData = await api.loginUsuario(nickname, senha);
       setToken(loginData.token);
       setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
       setScreen(SCREEN.LOBBY);
-    } catch (err) {
-      alert(`Erro ao entrar: ${err.message}`);
+    } catch (loginErr) {
+      if (loginErr.message.includes('Failed to fetch')) {
+        alert('Erro: não foi possível conectar ao servidor. Verifique se o backend está rodando.');
+        return;
+      }
+      try {
+        await api.cadastrarUsuario(nickname, senha);
+        const loginData = await api.loginUsuario(nickname, senha);
+        setToken(loginData.token);
+        setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
+        setScreen(SCREEN.LOBBY);
+      } catch (err) {
+        alert(`Erro ao entrar: ${err.message}`);
+      }
     }
   }
 
@@ -62,43 +85,44 @@ export default function App() {
     if (!password) return;
     try {
       const room = await api.criarSalaPrivada(user.id, password);
-      setRooms((prev) => [...prev, { ...room, isPrivate: true }]);
+      setRooms((prev) => [...prev, room]);
     } catch (err) {
       alert(`Erro ao criar sala: ${err.message}`);
     }
   }
 
   async function handleJoinRoom(room) {
-    const pwd = prompt('Senha da sala (deixe vazio para salas públicas):');
-    if (pwd === null) return; // usuário cancelou
+    let pwd = '';
+    if (room.isPrivate) {
+      pwd = prompt('Senha da sala:');
+      if (pwd === null) return;
+    }
     try {
       await api.adicionarUsuarioNaSala(room.id, user.id, pwd);
       const updatedRoom = await api.buscarSala(room.id);
-      const historico = updatedRoom?.historico ?? [];
       setCurrentRoom(updatedRoom ?? room);
-      setMessages(historico.map((item) => JSON.parse(item)));
+      setMessages((updatedRoom?.historico ?? []).map(parseMessage));
+      setConnected(true);
       setScreen(SCREEN.CHAT);
-
-      connect(
-        () => {
-          setConnected(true);
-          subscriptionRef.current = subscribeToRoom(room.id, (msg) => {
-            setMessages((prev) => [...prev, msg]);
-          });
-        },
-        () => setConnected(false)
-      );
     } catch (err) {
-      alert(`Erro ao entrar na sala: ${err.message}`);
+      if (room.isPrivate && (err.message.includes('401') || err.message.includes('403'))) {
+        alert('Senha incorreta. Tente novamente.');
+      } else {
+        alert(`Erro ao entrar na sala: ${err.message}`);
+      }
+    }
+  }
+
+  async function handleRefreshRooms() {
+    try {
+      const updated = await api.listarSalas();
+      setRooms(updated);
+    } catch (err) {
+      alert(`Erro ao atualizar salas: ${err.message}`);
     }
   }
 
   async function handleLeaveRoom() {
-    if (subscriptionRef.current) {
-      subscriptionRef.current.unsubscribe();
-      subscriptionRef.current = null;
-    }
-    disconnect();
     setConnected(false);
     try {
       await api.removerUsuarioDaSala(currentRoom.id, user.id);
@@ -110,14 +134,21 @@ export default function App() {
     setScreen(SCREEN.LOBBY);
   }
 
-  function handleSendMessage(text) {
-    if (!text.trim() || !connected) return;
-    sendMessage(currentRoom.id, {
+  async function handleSendMessage(text) {
+    if (!text.trim()) return;
+    const msg = {
       sender: user.nickname,
       role: user.role,
       text,
       timestamp: new Date().toISOString(),
-    });
+    };
+    try {
+      await api.adicionarMensagem(currentRoom.id, JSON.stringify(msg));
+      const updated = await api.buscarSala(currentRoom.id);
+      setMessages((updated?.historico ?? []).map(parseMessage));
+    } catch (err) {
+      alert(`Erro ao enviar mensagem: ${err.message}`);
+    }
   }
 
   if (screen === SCREEN.LOGIN) return <LoginScreen onLogin={handleLogin} />;
@@ -129,6 +160,7 @@ export default function App() {
         onJoinRoom={handleJoinRoom}
         onCreatePublic={handleCreatePublicRoom}
         onCreatePrivate={handleCreatePrivateRoom}
+        onRefresh={handleRefreshRooms}
       />
     );
   return (
@@ -188,7 +220,7 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate }) {
+function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate, onRefresh }) {
   return (
     <div className="screen lobby-screen">
       <header className="lobby-header">
@@ -202,6 +234,7 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate 
         <div className="lobby-actions">
           <button className="btn btn-primary" onClick={onCreatePublic}>+ Sala Pública</button>
           <button className="btn btn-secondary" onClick={onCreatePrivate}>+ Sala Privada</button>
+          <button className="btn btn-secondary" onClick={onRefresh}>↻ Atualizar</button>
         </div>
       </header>
       <div className="room-list">

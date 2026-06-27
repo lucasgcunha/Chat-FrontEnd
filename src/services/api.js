@@ -15,10 +15,21 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+async function requestText(path, options = {}) {
+  const headers = { 'Content-Type': 'text/plain' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE_URL}${path}`, { headers, ...options });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (res.status === 204) return null;
+  return res.json();
+}
+
 export const api = {
-  // Retorna { valido, duplicado, mensagem }
-  cadastrarUsuario: (nickname, senha) =>
-    request('/usuarios', { method: 'POST', body: JSON.stringify({ nickname, senha }) }),
+  cadastrarUsuario: async (nickname, senha) => {
+    const data = await request('/usuarios', { method: 'POST', body: JSON.stringify({ nickname, senha }) });
+    if (!data.valido) throw new Error(data.mensagem);
+    return data;
+  },
 
   // Retorna { token, idUsuario, nickname, role }
   loginUsuario: (nickname, senha) =>
@@ -53,9 +64,9 @@ export const api = {
     request(`/salas/${roomId}/usuario/${userId}`, { method: 'DELETE' }),
 
   adicionarMensagem: (roomId, mensagem) =>
-    request(`/salas/${roomId}/mensagem`, {
+    requestText(`/salas/${roomId}/mensagem`, {
       method: 'PUT',
-      body: JSON.stringify(mensagem),
+      body: mensagem,
     }),
 
   deletarSala: (id) => request(`/salas/${id}`, { method: 'DELETE' }),
