@@ -1,22 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, setToken } from './services/api';
 import type { User, Room, Message } from './types';
+import { parseMessage } from './utils';
+import LoginScreen from './components/LoginScreen';
+import LobbyScreen from './components/LobbyScreen';
+import ChatScreen from './components/ChatScreen';
 import './App.css';
 
 const SCREEN = { LOGIN: 'LOGIN', LOBBY: 'LOBBY', CHAT: 'CHAT' } as const;
 type Screen = (typeof SCREEN)[keyof typeof SCREEN];
-
-function roomLabel(room: Room): string {
-  return `Sala ${room.id.toString().slice(0, 8).toUpperCase()}`;
-}
-
-function parseMessage(item: string): Message {
-  try {
-    return JSON.parse(item) as Message;
-  } catch {
-    return { sender: 'Sistema', role: '', text: item, system: true, timestamp: new Date().toISOString() };
-  }
-}
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(SCREEN.LOGIN);
@@ -180,162 +172,5 @@ export default function App() {
       onLeave={handleLeaveRoom}
       messagesEndRef={messagesEndRef}
     />
-  );
-}
-
-interface LoginScreenProps {
-  onLogin: (nickname: string, senha: string) => void;
-}
-
-function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [nickname, setNickname] = useState('');
-  const [senha, setSenha] = useState('');
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nickname.trim() || !senha.trim()) return;
-    onLogin(nickname.trim(), senha.trim());
-  }
-
-  return (
-    <div className="screen login-screen">
-      <div className="card">
-        <h1>Chat App</h1>
-        <p className="subtitle">Identifique-se para entrar</p>
-        <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="nickname">Nickname</label>
-            <input
-              id="nickname"
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="Seu nickname..."
-              autoFocus
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="senha">Senha</label>
-            <input
-              id="senha"
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Sua senha..."
-            />
-          </div>
-          <button type="submit" className="btn btn-primary">Entrar</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-interface LobbyScreenProps {
-  user: User;
-  rooms: Room[];
-  onJoinRoom: (room: Room) => void;
-  onCreatePublic: () => void;
-  onCreatePrivate: () => void;
-  onRefresh: () => void;
-}
-
-function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate, onRefresh }: LobbyScreenProps) {
-  return (
-    <div className="screen lobby-screen">
-      <header className="lobby-header">
-        <div className="lobby-header-text">
-          <h1>Lobby</h1>
-          <p className="subtitle">
-            Bem-vindo, <strong>{user.nickname}</strong>{' '}
-            <span className="badge">{user.role}</span>
-          </p>
-        </div>
-        <div className="lobby-actions">
-          <button className="btn btn-primary" onClick={onCreatePublic}>+ Sala Pública</button>
-          <button className="btn btn-secondary" onClick={onCreatePrivate}>+ Sala Privada</button>
-          <button className="btn btn-secondary" onClick={onRefresh}>↻ Atualizar</button>
-        </div>
-      </header>
-      <div className="room-list">
-        {rooms.map((room) => (
-          <div key={room.id} className="room-card">
-            <div className="room-info">
-              <span className="room-name">{roomLabel(room)}</span>
-              <span className={`room-type ${room.isPrivate ? 'private' : 'public'}`}>
-                {room.isPrivate ? 'Privada' : 'Pública'}
-              </span>
-              <span className="room-members">
-                {room.room_users?.length ?? 0}{' '}
-                {room.room_users?.length === 1 ? 'membro' : 'membros'}
-              </span>
-            </div>
-            <button className="btn btn-sm" onClick={() => onJoinRoom(room)}>Entrar</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface ChatScreenProps {
-  user: User;
-  room: Room;
-  messages: Message[];
-  connected: boolean;
-  onSend: (text: string) => void;
-  onLeave: () => void;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
-}
-
-function ChatScreen({ user, room, messages, connected, onSend, onLeave, messagesEndRef }: ChatScreenProps) {
-  const [text, setText] = useState('');
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    onSend(text);
-    setText('');
-  }
-
-  return (
-    <div className="screen chat-screen">
-      <header className="chat-header">
-        <button className="btn btn-sm" onClick={onLeave}>← Voltar</button>
-        <div className="chat-header-info">
-          <h2>{roomLabel(room)}</h2>
-          <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`}>
-            {connected ? 'Conectado' : 'Conectando...'}
-          </span>
-        </div>
-        <span className="badge">{user.role}</span>
-      </header>
-      <div className="messages">
-        {messages.length === 0 && (
-          <p className="empty-msg">Nenhuma mensagem ainda. Seja o primeiro!</p>
-        )}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`message ${msg.system ? 'system' : msg.sender === user.nickname ? 'own' : 'other'}`}
-          >
-            {!msg.system && <span className="sender">{msg.sender}</span>}
-            <span className="bubble">{msg.text}</span>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <form className="message-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={connected ? 'Digite uma mensagem...' : 'Aguardando conexão...'}
-          disabled={!connected}
-        />
-        <button type="submit" className="btn btn-primary" disabled={!connected || !text.trim()}>
-          Enviar
-        </button>
-      </form>
-    </div>
   );
 }
