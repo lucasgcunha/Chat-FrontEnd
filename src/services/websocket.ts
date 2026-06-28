@@ -1,9 +1,10 @@
-import { Client } from '@stomp/stompjs';
+import { Client, type StompSubscription } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import type { Message } from '../types';
 
-let client = null;
+let client: Client | null = null;
 
-export function connect(onConnected, onDisconnected) {
+export function connect(onConnected: () => void, onDisconnected: () => void): Client {
   client = new Client({
     webSocketFactory: () => new SockJS('http://localhost:8080/ws-chat'),
     reconnectDelay: 5000,
@@ -14,14 +15,17 @@ export function connect(onConnected, onDisconnected) {
   return client;
 }
 
-export function subscribeToRoom(roomId, onMessage) {
+export function subscribeToRoom(
+  roomId: string,
+  onMessage: (msg: Message) => void
+): StompSubscription | null {
   if (!client || !client.connected) return null;
   return client.subscribe(`/topic/room.${roomId}`, (frame) => {
-    onMessage(JSON.parse(frame.body));
+    onMessage(JSON.parse(frame.body) as Message);
   });
 }
 
-export function sendMessage(roomId, payload) {
+export function sendMessage(roomId: string, payload: Message): void {
   if (!client || !client.connected) return;
   client.publish({
     destination: `/app/room.${roomId}`,
@@ -29,7 +33,7 @@ export function sendMessage(roomId, payload) {
   });
 }
 
-export function disconnect() {
+export function disconnect(): void {
   if (client) {
     client.deactivate();
     client = null;

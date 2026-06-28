@@ -1,29 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, setToken } from './services/api';
+import type { User, Room, Message } from './types';
 import './App.css';
 
-const SCREEN = { LOGIN: 'LOGIN', LOBBY: 'LOBBY', CHAT: 'CHAT' };
+const SCREEN = { LOGIN: 'LOGIN', LOBBY: 'LOBBY', CHAT: 'CHAT' } as const;
+type Screen = (typeof SCREEN)[keyof typeof SCREEN];
 
-function roomLabel(room) {
+function roomLabel(room: Room): string {
   return `Sala ${room.id.toString().slice(0, 8).toUpperCase()}`;
 }
 
-function parseMessage(item) {
+function parseMessage(item: string): Message {
   try {
-    return JSON.parse(item);
+    return JSON.parse(item) as Message;
   } catch {
-    return { sender: 'Sistema', text: item, system: true, timestamp: new Date().toISOString() };
+    return { sender: 'Sistema', role: '', text: item, system: true, timestamp: new Date().toISOString() };
   }
 }
 
 export default function App() {
-  const [screen, setScreen] = useState(SCREEN.LOGIN);
-  const [user, setUser] = useState(null);
-  const [rooms, setRooms] = useState([]);
-  const [currentRoom, setCurrentRoom] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [screen, setScreen] = useState<Screen>(SCREEN.LOGIN);
+  const [user, setUser] = useState<User | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [connected, setConnected] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -48,14 +50,14 @@ export default function App() {
     return () => clearInterval(interval);
   }, [screen, currentRoom?.id]);
 
-  async function handleLogin(nickname, senha) {
+  async function handleLogin(nickname: string, senha: string) {
     try {
       const loginData = await api.loginUsuario(nickname, senha);
       setToken(loginData.token);
       setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
       setScreen(SCREEN.LOBBY);
     } catch (loginErr) {
-      if (loginErr.message.includes('Failed to fetch')) {
+      if (loginErr instanceof Error && loginErr.message.includes('Failed to fetch')) {
         alert('Erro: não foi possível conectar ao servidor. Verifique se o backend está rodando.');
         return;
       }
@@ -66,36 +68,39 @@ export default function App() {
         setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
         setScreen(SCREEN.LOBBY);
       } catch (err) {
-        alert(`Erro ao entrar: ${err.message}`);
+        alert(`Erro ao entrar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
       }
     }
   }
 
   async function handleCreatePublicRoom() {
+    if (!user) return;
     try {
       const room = await api.criarSalaPublica(user.id);
       setRooms((prev) => [...prev, room]);
     } catch (err) {
-      alert(`Erro ao criar sala: ${err.message}`);
+      alert(`Erro ao criar sala: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
   }
 
   async function handleCreatePrivateRoom() {
+    if (!user) return;
     const password = prompt('Digite a senha para a sala privada:');
     if (!password) return;
     try {
       const room = await api.criarSalaPrivada(user.id, password);
       setRooms((prev) => [...prev, room]);
     } catch (err) {
-      alert(`Erro ao criar sala: ${err.message}`);
+      alert(`Erro ao criar sala: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
   }
 
-  async function handleJoinRoom(room) {
+  async function handleJoinRoom(room: Room) {
+    if (!user) return;
     let pwd = '';
     if (room.isPrivate) {
-      pwd = prompt('Senha da sala:');
-      if (pwd === null) return;
+      pwd = prompt('Senha da sala:') ?? '';
+      if (pwd === '') return;
     }
     try {
       await api.adicionarUsuarioNaSala(room.id, user.id, pwd);
@@ -105,10 +110,11 @@ export default function App() {
       setConnected(true);
       setScreen(SCREEN.CHAT);
     } catch (err) {
-      if (room.isPrivate && (err.message.includes('401') || err.message.includes('403'))) {
+      const msg = err instanceof Error ? err.message : '';
+      if (room.isPrivate && (msg.includes('401') || msg.includes('403'))) {
         alert('Senha incorreta. Tente novamente.');
       } else {
-        alert(`Erro ao entrar na sala: ${err.message}`);
+        alert(`Erro ao entrar na sala: ${msg}`);
       }
     }
   }
@@ -118,11 +124,12 @@ export default function App() {
       const updated = await api.listarSalas();
       setRooms(updated);
     } catch (err) {
-      alert(`Erro ao atualizar salas: ${err.message}`);
+      alert(`Erro ao atualizar salas: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
   }
 
   async function handleLeaveRoom() {
+    if (!currentRoom || !user) return;
     setConnected(false);
     try {
       await api.removerUsuarioDaSala(currentRoom.id, user.id);
@@ -134,9 +141,9 @@ export default function App() {
     setScreen(SCREEN.LOBBY);
   }
 
-  async function handleSendMessage(text) {
-    if (!text.trim()) return;
-    const msg = {
+  async function handleSendMessage(text: string) {
+    if (!text.trim() || !currentRoom || !user) return;
+    const msg: Message = {
       sender: user.nickname,
       role: user.role,
       text,
@@ -147,7 +154,7 @@ export default function App() {
       const updated = await api.buscarSala(currentRoom.id);
       setMessages((updated?.historico ?? []).map(parseMessage));
     } catch (err) {
-      alert(`Erro ao enviar mensagem: ${err.message}`);
+      alert(`Erro ao enviar mensagem: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
   }
 
@@ -155,7 +162,7 @@ export default function App() {
   if (screen === SCREEN.LOBBY)
     return (
       <LobbyScreen
-        user={user}
+        user={user!}
         rooms={rooms}
         onJoinRoom={handleJoinRoom}
         onCreatePublic={handleCreatePublicRoom}
@@ -165,8 +172,8 @@ export default function App() {
     );
   return (
     <ChatScreen
-      user={user}
-      room={currentRoom}
+      user={user!}
+      room={currentRoom!}
       messages={messages}
       connected={connected}
       onSend={handleSendMessage}
@@ -176,11 +183,15 @@ export default function App() {
   );
 }
 
-function LoginScreen({ onLogin }) {
+interface LoginScreenProps {
+  onLogin: (nickname: string, senha: string) => void;
+}
+
+function LoginScreen({ onLogin }: LoginScreenProps) {
   const [nickname, setNickname] = useState('');
   const [senha, setSenha] = useState('');
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!nickname.trim() || !senha.trim()) return;
     onLogin(nickname.trim(), senha.trim());
@@ -220,7 +231,16 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate, onRefresh }) {
+interface LobbyScreenProps {
+  user: User;
+  rooms: Room[];
+  onJoinRoom: (room: Room) => void;
+  onCreatePublic: () => void;
+  onCreatePrivate: () => void;
+  onRefresh: () => void;
+}
+
+function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate, onRefresh }: LobbyScreenProps) {
   return (
     <div className="screen lobby-screen">
       <header className="lobby-header">
@@ -258,10 +278,20 @@ function LobbyScreen({ user, rooms, onJoinRoom, onCreatePublic, onCreatePrivate,
   );
 }
 
-function ChatScreen({ user, room, messages, connected, onSend, onLeave, messagesEndRef }) {
+interface ChatScreenProps {
+  user: User;
+  room: Room;
+  messages: Message[];
+  connected: boolean;
+  onSend: (text: string) => void;
+  onLeave: () => void;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
+}
+
+function ChatScreen({ user, room, messages, connected, onSend, onLeave, messagesEndRef }: ChatScreenProps) {
   const [text, setText] = useState('');
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     onSend(text);
     setText('');
