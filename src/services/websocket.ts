@@ -1,35 +1,38 @@
 import { Client, type StompSubscription } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
-import type { Message } from '../types';
+import type { MensagemResponse } from '../types';
 
 let client: Client | null = null;
+let wsToken: string | null = null;
 
-export function connect(onConnected: () => void, onDisconnected: () => void): Client {
+export function setToken(token: string): void {
+  wsToken = token;
+}
+
+export function connect(onConnected: () => void, onDisconnected: () => void): void {
   client = new Client({
-    webSocketFactory: () => new SockJS('http://localhost:8080/ws-chat'),
+    brokerURL: `ws://localhost:8080/ws?token=${wsToken}`,
     reconnectDelay: 5000,
     onConnect: onConnected,
     onDisconnect: onDisconnected,
   });
   client.activate();
-  return client;
 }
 
 export function subscribeToRoom(
   roomId: string,
-  onMessage: (msg: Message) => void
+  onMessage: (msg: MensagemResponse) => void
 ): StompSubscription | null {
   if (!client || !client.connected) return null;
-  return client.subscribe(`/topic/room.${roomId}`, (frame) => {
-    onMessage(JSON.parse(frame.body) as Message);
+  return client.subscribe(`/topic/salas/${roomId}`, (frame) => {
+    onMessage(JSON.parse(frame.body) as MensagemResponse);
   });
 }
 
-export function sendMessage(roomId: string, payload: Message): void {
+export function sendMessage(roomId: string, conteudo: string): void {
   if (!client || !client.connected) return;
   client.publish({
-    destination: `/app/room.${roomId}`,
-    body: JSON.stringify(payload),
+    destination: '/app/mensagem',
+    body: JSON.stringify({ salaId: roomId, conteudo }),
   });
 }
 

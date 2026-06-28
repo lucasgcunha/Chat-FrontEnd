@@ -34,3 +34,13 @@ export interface RegisterResponse {
   duplicado: boolean;
   mensagem: string;
 }
+
+export interface MensagemResponse {
+  id: number;
+  salaId: string;
+  remetenteId: number;
+  remetenteNome: string;
+  remetenteRole: string;
+  conteudo: string;
+  dataEnvio: string;
+}

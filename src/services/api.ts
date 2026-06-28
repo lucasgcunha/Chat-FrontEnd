@@ -1,4 +1,4 @@
-import type { LoginResponse, RegisterResponse, Room } from '../types';
+import type { LoginResponse, MensagemResponse, RegisterResponse, Room } from '../types';
 
 const BASE_URL = 'http://localhost:8080';
 
@@ -10,15 +10,6 @@ export function setToken(token: string): void {
 
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(`${BASE_URL}${path}`, { headers, ...options });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
-  if (res.status === 204) return null as T;
-  return res.json() as Promise<T>;
-}
-
-async function requestText<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'text/plain' };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(`${BASE_URL}${path}`, { headers, ...options });
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
@@ -75,11 +66,8 @@ export const api = {
   removerUsuarioDaSala: (roomId: string, userId: number): Promise<Room> =>
     request<Room>(`/salas/${roomId}/usuario/${userId}`, { method: 'DELETE' }),
 
-  adicionarMensagem: (roomId: string, mensagem: string): Promise<Room> =>
-    requestText<Room>(`/salas/${roomId}/mensagem`, {
-      method: 'PUT',
-      body: mensagem,
-    }),
+  listarMensagensDaSala: (roomId: string): Promise<MensagemResponse[]> =>
+    request<MensagemResponse[]>(`/mensagens/sala/${roomId}`),
 
   deletarSala: (id: string) => request(`/salas/${id}`, { method: 'DELETE' }),
 };

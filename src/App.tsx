@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { api, setToken } from './services/api';
+import type { StompSubscription } from '@stomp/stompjs';
+import { api, setToken as setApiToken } from './services/api';
+import {
+  setToken as setWsToken,
+  connect as wsConnect,
+  subscribeToRoom,
+  sendMessage as wsSendMessage,
+  disconnect as wsDisconnect,
+} from './services/websocket';
 import type { User, Room, Message } from './types';
-import { parseMessage } from './utils';
+import { mensagemResponseToMessage } from './utils';
 import LoginScreen from './components/LoginScreen';
 import LobbyScreen from './components/LobbyScreen';
 import ChatScreen from './components/ChatScreen';
@@ -18,6 +26,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [connected, setConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const wsSubscriptionRef = useRef<StompSubscription | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -29,23 +38,19 @@ export default function App() {
     }
   }, [screen]);
 
+  // Limpa a conexão WebSocket ao desmontar o componente
   useEffect(() => {
-    if (screen !== SCREEN.CHAT || !currentRoom) return;
-    const interval = setInterval(async () => {
-      try {
-        const updated = await api.buscarSala(currentRoom.id);
-        setMessages((updated?.historico ?? []).map(parseMessage));
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [screen, currentRoom?.id]);
+    return () => {
+      wsSubscriptionRef.current?.unsubscribe();
+      wsDisconnect();
+    };
+  }, []);
 
   async function handleLogin(nickname: string, senha: string) {
     try {
       const loginData = await api.loginUsuario(nickname, senha);
-      setToken(loginData.token);
+      setApiToken(loginData.token);
+      setWsToken(loginData.token);
       setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
       setScreen(SCREEN.LOBBY);
     } catch (loginErr) {
@@ -56,7 +61,8 @@ export default function App() {
       try {
         await api.cadastrarUsuario(nickname, senha);
         const loginData = await api.loginUsuario(nickname, senha);
-        setToken(loginData.token);
+        setApiToken(loginData.token);
+        setWsToken(loginData.token);
         setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
         setScreen(SCREEN.LOBBY);
       } catch (err) {
@@ -96,11 +102,29 @@ export default function App() {
     }
     try {
       await api.adicionarUsuarioNaSala(room.id, user.id, pwd);
-      const updatedRoom = await api.buscarSala(room.id);
+
+      const [updatedRoom, history] = await Promise.all([
+        api.buscarSala(room.id),
+        api.listarMensagensDaSala(room.id),
+      ]);
+
       setCurrentRoom(updatedRoom ?? room);
-      setMessages((updatedRoom?.historico ?? []).map(parseMessage));
-      setConnected(true);
+      setMessages(history.map(mensagemResponseToMessage));
       setScreen(SCREEN.CHAT);
+
+      // Desconecta eventual WebSocket anterior e abre novo
+      wsSubscriptionRef.current?.unsubscribe();
+      wsDisconnect();
+
+      wsConnect(
+        () => {
+          setConnected(true);
+          wsSubscriptionRef.current = subscribeToRoom(room.id, (msg) => {
+            setMessages((prev) => [...prev, mensagemResponseToMessage(msg)]);
+          });
+        },
+        () => setConnected(false),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (room.isPrivate && (msg.includes('401') || msg.includes('403'))) {
@@ -122,6 +146,9 @@ export default function App() {
 
   async function handleLeaveRoom() {
     if (!currentRoom || !user) return;
+    wsSubscriptionRef.current?.unsubscribe();
+    wsSubscriptionRef.current = null;
+    wsDisconnect();
     setConnected(false);
     try {
       await api.removerUsuarioDaSala(currentRoom.id, user.id);
@@ -133,21 +160,9 @@ export default function App() {
     setScreen(SCREEN.LOBBY);
   }
 
-  async function handleSendMessage(text: string) {
-    if (!text.trim() || !currentRoom || !user) return;
-    const msg: Message = {
-      sender: user.nickname,
-      role: user.role,
-      text,
-      timestamp: new Date().toISOString(),
-    };
-    try {
-      await api.adicionarMensagem(currentRoom.id, JSON.stringify(msg));
-      const updated = await api.buscarSala(currentRoom.id);
-      setMessages((updated?.historico ?? []).map(parseMessage));
-    } catch (err) {
-      alert(`Erro ao enviar mensagem: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-    }
+  function handleSendMessage(text: string) {
+    if (!text.trim() || !currentRoom) return;
+    wsSendMessage(currentRoom.id, text);
   }
 
   if (screen === SCREEN.LOGIN) return <LoginScreen onLogin={handleLogin} />;
