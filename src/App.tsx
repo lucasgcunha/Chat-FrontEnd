@@ -53,20 +53,36 @@ export default function App() {
       setWsToken(loginData.token);
       setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
       setScreen(SCREEN.LOBBY);
-    } catch (loginErr) {
-      if (loginErr instanceof Error && loginErr.message.includes('Failed to fetch')) {
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Failed to fetch')) {
         alert('Erro: não foi possível conectar ao servidor. Verifique se o backend está rodando.');
+      } else {
+        alert('Usuário ou senha incorretos.');
+      }
+    }
+  }
+
+  async function handleRegister(nickname: string, senha: string) {
+    try {
+      const data = await api.cadastrarUsuario(nickname, senha);
+      if (!data.valido) {
+        alert(
+          data.duplicado
+            ? `Usuário "${nickname}" já está cadastrado.`
+            : `Erro ao cadastrar: ${data.mensagem}`,
+        );
         return;
       }
-      try {
-        await api.cadastrarUsuario(nickname, senha);
-        const loginData = await api.loginUsuario(nickname, senha);
-        setApiToken(loginData.token);
-        setWsToken(loginData.token);
-        setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
-        setScreen(SCREEN.LOBBY);
-      } catch (err) {
-        alert(`Erro ao entrar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+      const loginData = await api.loginUsuario(nickname, senha);
+      setApiToken(loginData.token);
+      setWsToken(loginData.token);
+      setUser({ id: loginData.idUsuario, nickname: loginData.nickname, role: loginData.role });
+      setScreen(SCREEN.LOBBY);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Failed to fetch')) {
+        alert('Erro: não foi possível conectar ao servidor. Verifique se o backend está rodando.');
+      } else {
+        alert(`Erro ao cadastrar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
       }
     }
   }
@@ -165,7 +181,7 @@ export default function App() {
     wsSendMessage(currentRoom.id, text);
   }
 
-  if (screen === SCREEN.LOGIN) return <LoginScreen onLogin={handleLogin} />;
+  if (screen === SCREEN.LOGIN) return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} />;
   if (screen === SCREEN.LOBBY)
     return (
       <LobbyScreen

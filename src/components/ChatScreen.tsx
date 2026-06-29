@@ -23,7 +23,7 @@ export default function ChatScreen({
 }: ChatScreenProps) {
   const [text, setText] = useState('');
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     onSend(text);
     setText('');

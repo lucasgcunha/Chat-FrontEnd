@@ -18,14 +18,11 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
 }
 
 export const api = {
-  cadastrarUsuario: async (nickname: string, senha: string): Promise<RegisterResponse> => {
-    const data = await request<RegisterResponse>('/usuarios', {
+  cadastrarUsuario: (nickname: string, senha: string): Promise<RegisterResponse> =>
+    request<RegisterResponse>('/usuarios', {
       method: 'POST',
       body: JSON.stringify({ nickname, senha }),
-    });
-    if (!data.valido) throw new Error(data.mensagem);
-    return data;
-  },
+    }),
 
   loginUsuario: (nickname: string, senha: string): Promise<LoginResponse> =>
     request<LoginResponse>('/auth/login', {
